@@ -1,100 +1,85 @@
 {
-  "project": "testnet Infra",
-  "description": "Infrastructure repository with environment-specific Terraform modules separated by directory",
+  "project": "tf-env-governance-poc",
+  "description": "Environment-isolated Terraform: one directory, one S3 state, and one workflow scope per environment",
   "terraform_version": ">=1.5.0",
+  "backend": {
+    "type": "s3",
+    "note": "No Terraform Cloud. One state key per environment; DynamoDB for locking."
+  },
   "environments": {
-    "Dev": {
-      "path": "Dev",
+    "dev": {
+      "path": "dev",
       "description": "Development environment",
+      "state_key": "env/dev/terraform.tfstate",
+      "github_environment": "dev",
       "workflows": {
-        "apply": {
-          "trigger": "main branch",
-          "terraform_command": "apply -auto-approve",
-          "allowed_operations": ["create", "update"]
-        },
-        "destroy": {
-          "trigger": "tag vX.X.X-destroy",
-          "terraform_command": "destroy -auto-approve",
-          "manual_review": true
-        },
         "plan": {
-          "trigger": "PR to main",
+          "trigger": "PR touching dev/",
           "terraform_command": "plan -out=tfplan",
           "comment_on_pr": true
-        }
-      }
-    },
-    "Integrate": {
-      "path": "Integrate",
-      "description": "Integration environment",
-      "workflows": {
+        },
         "apply": {
-          "trigger": "tag vX.X.X",
+          "trigger": "push to main touching dev/",
           "terraform_command": "apply -auto-approve",
-          "manual_review": true,
-          "slack_alert": true
+          "allowed_operations": ["create", "update"],
+          "github_environment_approval": false
         },
         "destroy": {
-          "trigger": "approved deprecation RFC",
+          "trigger": "workflow_dispatch",
           "terraform_command": "destroy -auto-approve",
-          "manual_review": true,
-          "final_approval_stakeholders": ["devops-lead", "product-owner-integrate"]
-        },
-        "plan": {
-          "trigger": "PR to main",
-          "terraform_command": "plan -out=tfplan",
-          "comment_on_pr": true,
-          "suggest_changes": true
+          "github_environment_approval": true
         }
       }
     },
-    "Prod": {
-      "path": "Prod",
+    "uat": {
+      "path": "uat",
+      "description": "UAT environment",
+      "state_key": "env/uat/terraform.tfstate",
+      "github_environment": "uat",
+      "workflows": {
+        "plan": {
+          "trigger": "PR touching uat/",
+          "terraform_command": "plan -out=tfplan",
+          "comment_on_pr": true
+        },
+        "apply": {
+          "trigger": "workflow_dispatch or push to main touching uat/",
+          "terraform_command": "apply -auto-approve",
+          "github_environment_approval": true
+        },
+        "destroy": {
+          "trigger": "workflow_dispatch",
+          "terraform_command": "destroy -auto-approve",
+          "github_environment_approval": true
+        }
+      }
+    },
+    "prod": {
+      "path": "prod",
       "description": "Production environment",
+      "state_key": "env/prod/terraform.tfstate",
+      "github_environment": "prod",
       "policies": [
-        "no auto-approval - always manual review",
-        "destroy requires RFC with 3+ stakeholder approval"
+        "no auto-approval for apply or destroy",
+        "destroy requires multi-reviewer GitHub Environment gate"
       ],
       "workflows": {
+        "plan": {
+          "trigger": "PR touching prod/",
+          "terraform_command": "plan -out=tfplan",
+          "comment_on_pr": true
+        },
         "apply": {
-          "trigger": "approved RFC + tagged release",
+          "trigger": "workflow_dispatch",
           "terraform_command": "apply -auto-approve",
-          "manual_review": true,
-          "slack_alert": true,
-          "stakeholders_required": ["devops-lead", "product-owner-prod", "security-officer"],
-          "timeout_seconds": 300
+          "github_environment_approval": true,
+          "required_reviewers_note": "Configure multiple required reviewers on GitHub Environment prod"
         },
         "destroy": {
-          "trigger": "approved RFC + 3+ stakeholder signatures",
+          "trigger": "workflow_dispatch",
           "terraform_command": "destroy -auto-approve",
-          "manual_review": true,
-          "slack_alert": true,
-          "stakeholders_required": ["devops-lead", "product-owner-prod", "security-officer", "architect"],
-          "final_approval_required": true,
-          "sla_minutes": 60
-        },
-        "plan": {
-          "trigger": "PR to main",
-          "terraform_command": "plan -out=tfplan",
-          "comment_on_pr": true,
-          "suggest_changes": true
-        }
-      }
-    }
-  },
-  "pipeline_globals": {
-    "backend": {
-      "type": "remote",
-      "workspace_base": "testnet-infra"
-    },
-    "notifications": {
-      "slack": {
-        "enabled": true,
-        "team": "testnet-infra",
-        "channels": {
-          "Dev": "#dev-infra-alerts",
-          "Integrate": "#int-infra-alerts",
-          "Prod": ["#production-alerts", "#devops-critical"]
+          "github_environment_approval": true,
+          "required_reviewers_note": "Configure multiple required reviewers on GitHub Environment prod"
         }
       }
     }

@@ -1,0 +1,103 @@
+# Sovereign workflow for the uat environment only.
+# Path filters + working-directory ensure this job never touches dev/ or prod/.
+name: terraform-uat
+
+on:
+  pull_request:
+    paths:
+      - "uat/**"
+      - ".github/workflows/uat.yml"
+  push:
+    branches: [main]
+    paths:
+      - "uat/**"
+      - ".github/workflows/uat.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action"
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  WORKING_DIR: uat
+
+jobs:
+  plan:
+    if: >
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && inputs.action == 'plan')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: uat
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7"
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        run: terraform plan -input=false -no-color -out=tfplan
+
+  apply:
+    if: >
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.action == 'apply')
+    runs-on: ubuntu-latest
+    environment: uat
+    defaults:
+      run:
+        working-directory: uat
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7"
+
+      - name: Terraform init
+        run: terraform init -backend=false
+
+      - name: Terraform apply
+        run: terraform apply -input=false -auto-approve
+
+  destroy:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
+    runs-on: ubuntu-latest
+    environment: uat
+    defaults:
+      run:
+        working-directory: uat
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7"
+
+      - name: Terraform init
+        run: terraform init -backend=false
+
+      - name: Terraform destroy
+        run: terraform destroy -input=false -auto-approve

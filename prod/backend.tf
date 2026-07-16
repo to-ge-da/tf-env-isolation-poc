@@ -1,0 +1,11 @@
+# One S3 state key per environment. Same bucket is fine; different keys = different state.
+# Replace bucket / dynamodb_table / region with your org values before real applies.
+terraform {
+  backend "s3" {
+    bucket         = "tf-env-governance-poc-state"
+    key            = "env/prod/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "tf-env-governance-poc-locks"
+    encrypt        = true
+  }
+}
