@@ -35,7 +35,7 @@ provider "aws" {
 }
 ```
 
-That pattern increases blast radius: one `plan` / `apply` / `destroy` can touch the wrong account. It also weakens credential isolation (runners often need access to every account) and makes PR review harder (“what did this change?” spans environments). Unwanted production deletes have already occurred under this model.
+That pattern increases blast radius: one `plan` / `apply` / `destroy` can touch the wrong account. It also weakens credential isolation (runners often need access to every account) and makes PR review harder ("what did this change?" spans environments). Unwanted production deletes have already occurred under this model.
 
 **Standard correction:** one environment (or account) → one root module → one state → operations scoped to that path with credentials limited to that account.
 
