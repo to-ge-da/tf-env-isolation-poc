@@ -1,6 +1,6 @@
 {
-  "project": "tf-env-governance-poc",
-  "description": "Environment-isolated Terraform: one directory, one S3 state, and one workflow scope per environment",
+  "project": "tf-env-isolation-poc",
+  "description": "Environment-isolated Terraform: one directory and one S3 state per environment",
   "terraform_version": ">=1.5.0",
   "backend": {
     "type": "s3",
@@ -10,78 +10,17 @@
     "dev": {
       "path": "dev",
       "description": "Development environment",
-      "state_key": "env/dev/terraform.tfstate",
-      "github_environment": "dev",
-      "workflows": {
-        "plan": {
-          "trigger": "PR touching dev/",
-          "terraform_command": "plan -out=tfplan",
-          "comment_on_pr": true
-        },
-        "apply": {
-          "trigger": "push to main touching dev/",
-          "terraform_command": "apply -auto-approve",
-          "allowed_operations": ["create", "update"],
-          "github_environment_approval": false
-        },
-        "destroy": {
-          "trigger": "workflow_dispatch",
-          "terraform_command": "destroy -auto-approve",
-          "github_environment_approval": true
-        }
-      }
+      "state_key": "env/dev/terraform.tfstate"
     },
     "uat": {
       "path": "uat",
       "description": "UAT environment",
-      "state_key": "env/uat/terraform.tfstate",
-      "github_environment": "uat",
-      "workflows": {
-        "plan": {
-          "trigger": "PR touching uat/",
-          "terraform_command": "plan -out=tfplan",
-          "comment_on_pr": true
-        },
-        "apply": {
-          "trigger": "workflow_dispatch or push to main touching uat/",
-          "terraform_command": "apply -auto-approve",
-          "github_environment_approval": true
-        },
-        "destroy": {
-          "trigger": "workflow_dispatch",
-          "terraform_command": "destroy -auto-approve",
-          "github_environment_approval": true
-        }
-      }
+      "state_key": "env/uat/terraform.tfstate"
     },
     "prod": {
       "path": "prod",
       "description": "Production environment",
-      "state_key": "env/prod/terraform.tfstate",
-      "github_environment": "prod",
-      "policies": [
-        "no auto-approval for apply or destroy",
-        "destroy requires multi-reviewer GitHub Environment gate"
-      ],
-      "workflows": {
-        "plan": {
-          "trigger": "PR touching prod/",
-          "terraform_command": "plan -out=tfplan",
-          "comment_on_pr": true
-        },
-        "apply": {
-          "trigger": "workflow_dispatch",
-          "terraform_command": "apply -auto-approve",
-          "github_environment_approval": true,
-          "required_reviewers_note": "Configure multiple required reviewers on GitHub Environment prod"
-        },
-        "destroy": {
-          "trigger": "workflow_dispatch",
-          "terraform_command": "destroy -auto-approve",
-          "github_environment_approval": true,
-          "required_reviewers_note": "Configure multiple required reviewers on GitHub Environment prod"
-        }
-      }
+      "state_key": "env/prod/terraform.tfstate"
     }
   }
 }

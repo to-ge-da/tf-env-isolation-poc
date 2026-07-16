@@ -1,6 +1,6 @@
-# tf-env-governance-poc
+# tf-env-isolation-poc
 
-Proof of concept for **environment-isolated Terraform**: one directory, one S3 state, and one GitHub Actions workflow scope per environment (`dev` / `uat` / `prod`).
+Proof of concept for **environment-isolated Terraform**: one directory and one S3 state per environment (`dev` / `uat` / `prod`).
 
 ## Problem
 
@@ -25,35 +25,35 @@ That is **not good daily practice** for AWS/Terraform. One `apply` or `destroy` 
 
 ## PoC goal
 
-| Environment | Directory | S3 state key (example) | Workflow |
-|-------------|-----------|------------------------|----------|
-| dev | `dev/` | `env/dev/terraform.tfstate` | `.github/workflows/dev.yml` |
-| uat | `uat/` | `env/uat/terraform.tfstate` | `.github/workflows/uat.yml` |
-| prod | `prod/` | `env/prod/terraform.tfstate` | `.github/workflows/prod.yml` |
+| Environment | Directory | S3 state key (example) |
+|-------------|-----------|------------------------|
+| dev | `dev/` | `env/dev/terraform.tfstate` |
+| uat | `uat/` | `env/uat/terraform.tfstate` |
+| prod | `prod/` | `env/prod/terraform.tfstate` |
 
 - **No Terraform Cloud** — remote state is S3 (+ DynamoDB lock).
 - **No cross-env provider aliases** — one unaliased provider per env root.
-- **Approvals** via GitHub Environments (`dev`, `uat`, `prod`), not conflicting per-env rules on the same branch protection config.
+- **CI deferred** — when added later, prefer one reusable/matrix workflow, not three duplicated pipelines.
 
 See [specification.md](specification.md) for the full brief.
 
 ## Demo script
 
-1. Open a PR that only changes `dev/` → only the `dev` workflow should plan.
-2. Open a PR that only changes `prod/` → only the `prod` workflow should plan; apply waits on Environment reviewers.
-3. Compare `dev/backend.tf`, `uat/backend.tf`, and `prod/backend.tf` — three distinct state keys; no multi-account aliases.
+1. Compare `dev/backend.tf`, `uat/backend.tf`, and `prod/backend.tf` — three distinct state keys.
+2. Confirm no multi-account provider aliases (`alias = "dev"|"uat"|"prod"`) in any env root.
+3. Mentally map: changes under `dev/` only ever apply against `dev/` and `env/dev/terraform.tfstate`.
 
 ## Non-goals
 
 - Migrating the real production monolith
 - Terraform Cloud / Enterprise
 - Vault, bastions, Grafana, RFC bots, snapshot/rollback automation
+- Shipping GitHub Actions in this PoC pass
 
 ## Layout
 
 ```
 dev/    uat/    prod/     # one root module + one state each
-.github/workflows/        # path-filtered sovereign workflows
-.github/ci-config.json    # CI sketch (paths, state keys, gates)
+.github/ci-config.json    # structure/state sketch
 specification.md          # PoC brief
 ```

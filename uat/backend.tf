@@ -2,10 +2,10 @@
 # Replace bucket / dynamodb_table / region with your org values before real applies.
 terraform {
   backend "s3" {
-    bucket         = "tf-env-governance-poc-state"
+    bucket         = "tf-env-isolation-poc-state"
     key            = "env/uat/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "tf-env-governance-poc-locks"
+    dynamodb_table = "tf-env-isolation-poc-locks"
     encrypt        = true
   }
 }
