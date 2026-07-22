@@ -75,10 +75,12 @@ Each of `dev/`, `uat/`, and `prod/` contains:
 | uat | `uat/` | `env/uat/terraform.tfstate` |
 | prod | `prod/` | `env/prod/terraform.tfstate` |
 
-Same bucket is acceptable; **different keys** mean different state. Use a DynamoDB table for state locking. This PoC does **not** use Terraform Cloud.
+Same bucket is acceptable; **different keys** mean different state. State locking uses native S3 lockfiles (`use_lockfile = true`). This PoC does **not** use Terraform Cloud.
 
 ## Success criteria
 
 - [ ] Each environment has its own directory with independent Terraform configuration
 - [ ] Each environment has its own S3 state key (one state per environment)
 - [ ] No cross-environment provider aliases in any env root module
+
+See [references.md](references.md) for related official documentation.

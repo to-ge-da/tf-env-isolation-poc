@@ -1,12 +1,14 @@
-# legacy/ — anti-pattern example (do not copy for production)
+# Shared state across AWS accounts
 
-This directory intentionally shows a **bad** Terraform layout:
+This directory is a deliberate unsafe example: one Terraform state drives multiple AWS account providers. Do not copy it for production use.
+
+It shows:
 
 - **One shared state** (`env/legacy/terraform.tfstate`)
 - **Aliased AWS providers** for `dev`, `uat`, and `prod` in the same root module
-- **One apply/destroy** can create or delete resources in **all three accounts**
+- **One apply/destroy** that can create or delete resources in **all three accounts**
 
-Use it only to understand the problem this PoC fixes. For the corrected layout, see `../dev`, `../uat`, and `../prod` (one directory + one state key each).
+For the corrected layout, see `../dev`, `../uat`, and `../prod` (one directory and one state key each). Official background: [docs/references.md](../docs/references.md).
 
 ## What it deploys
 
@@ -28,7 +30,7 @@ cp terraform.tfvars.example terraform.tfvars
 
 2. Set real role ARNs for each account (roles need permission to manage SSM parameters).
 
-3. Ensure the S3 state bucket and DynamoDB lock table from `backend.tf` exist (or adjust those values).
+3. Ensure the S3 state bucket from `backend.tf` exists (or adjust those values). Native S3 lockfiles are used (`use_lockfile = true`).
 
 4. Initialize, plan, apply:
 
