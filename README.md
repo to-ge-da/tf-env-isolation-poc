@@ -8,6 +8,8 @@ See [docs/poc.md](docs/poc.md) for the full brief.
 
 ```
 dev/    uat/    prod/     # one root module + one state each
-docs/poc.md               # detailed PoC brief
+legacy/                   # shared-state multi-account demo
+docs/poc.md               # PoC brief
+docs/context.md           # aliases vs separate state
 .github/ci-config.json    # structure/state sketch
 ```

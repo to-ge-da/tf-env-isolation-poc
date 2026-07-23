@@ -8,7 +8,7 @@ It shows:
 - **Aliased AWS providers** for `dev`, `uat`, and `prod` in the same root module
 - **One apply/destroy** that can create or delete resources in **all three accounts**
 
-For the corrected layout, see `../dev`, `../uat`, and `../prod` (one directory and one state key each). Official background: [docs/references.md](../docs/references.md).
+For the corrected layout, see `../dev`, `../uat`, and `../prod` (one directory and one state key each). Background: [docs/context.md](../docs/context.md).
 
 ## What it deploys
 

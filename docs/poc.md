@@ -83,4 +83,4 @@ Same bucket is acceptable; **different keys** mean different state. State lockin
 - [ ] Each environment has its own S3 state key (one state per environment)
 - [ ] No cross-environment provider aliases in any env root module
 
-See [references.md](references.md) for related official documentation.
+See [context.md](context.md) for background on aliases versus separate state.
