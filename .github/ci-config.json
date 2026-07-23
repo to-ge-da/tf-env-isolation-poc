@@ -1,102 +1,26 @@
 {
-  "project": "testnet Infra",
-  "description": "Infrastructure repository with environment-specific Terraform modules separated by directory",
-  "terraform_version": ">=1.5.0",
-  "environments": {
-    "Dev": {
-      "path": "Dev",
-      "description": "Development environment",
-      "workflows": {
-        "apply": {
-          "trigger": "main branch",
-          "terraform_command": "apply -auto-approve",
-          "allowed_operations": ["create", "update"]
-        },
-        "destroy": {
-          "trigger": "tag vX.X.X-destroy",
-          "terraform_command": "destroy -auto-approve",
-          "manual_review": true
-        },
-        "plan": {
-          "trigger": "PR to main",
-          "terraform_command": "plan -out=tfplan",
-          "comment_on_pr": true
-        }
-      }
-    },
-    "Integrate": {
-      "path": "Integrate",
-      "description": "Integration environment",
-      "workflows": {
-        "apply": {
-          "trigger": "tag vX.X.X",
-          "terraform_command": "apply -auto-approve",
-          "manual_review": true,
-          "slack_alert": true
-        },
-        "destroy": {
-          "trigger": "approved deprecation RFC",
-          "terraform_command": "destroy -auto-approve",
-          "manual_review": true,
-          "final_approval_stakeholders": ["devops-lead", "product-owner-integrate"]
-        },
-        "plan": {
-          "trigger": "PR to main",
-          "terraform_command": "plan -out=tfplan",
-          "comment_on_pr": true,
-          "suggest_changes": true
-        }
-      }
-    },
-    "Prod": {
-      "path": "Prod",
-      "description": "Production environment",
-      "policies": [
-        "no auto-approval - always manual review",
-        "destroy requires RFC with 3+ stakeholder approval"
-      ],
-      "workflows": {
-        "apply": {
-          "trigger": "approved RFC + tagged release",
-          "terraform_command": "apply -auto-approve",
-          "manual_review": true,
-          "slack_alert": true,
-          "stakeholders_required": ["devops-lead", "product-owner-prod", "security-officer"],
-          "timeout_seconds": 300
-        },
-        "destroy": {
-          "trigger": "approved RFC + 3+ stakeholder signatures",
-          "terraform_command": "destroy -auto-approve",
-          "manual_review": true,
-          "slack_alert": true,
-          "stakeholders_required": ["devops-lead", "product-owner-prod", "security-officer", "architect"],
-          "final_approval_required": true,
-          "sla_minutes": 60
-        },
-        "plan": {
-          "trigger": "PR to main",
-          "terraform_command": "plan -out=tfplan",
-          "comment_on_pr": true,
-          "suggest_changes": true
-        }
-      }
-    }
+  "project": "tf-env-isolation-poc",
+  "description": "One directory and one S3 state per environment",
+  "terraform_version": ">=1.11.0",
+  "backend": {
+    "type": "s3",
+    "note": "No Terraform Cloud. One state key per environment; native S3 lockfiles (use_lockfile)."
   },
-  "pipeline_globals": {
-    "backend": {
-      "type": "remote",
-      "workspace_base": "testnet-infra"
+  "environments": {
+    "dev": {
+      "path": "dev",
+      "description": "Development environment",
+      "state_key": "env/dev/terraform.tfstate"
     },
-    "notifications": {
-      "slack": {
-        "enabled": true,
-        "team": "testnet-infra",
-        "channels": {
-          "Dev": "#dev-infra-alerts",
-          "Integrate": "#int-infra-alerts",
-          "Prod": ["#production-alerts", "#devops-critical"]
-        }
-      }
+    "uat": {
+      "path": "uat",
+      "description": "UAT environment",
+      "state_key": "env/uat/terraform.tfstate"
+    },
+    "prod": {
+      "path": "prod",
+      "description": "Production environment",
+      "state_key": "env/prod/terraform.tfstate"
     }
   }
 }
