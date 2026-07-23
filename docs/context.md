@@ -35,7 +35,7 @@ Official examples of multiple provider configurations focus on cases such as **d
 
 So aliases are appropriate when **one deployment** legitimately needs more than one provider configuration (for example two regions, or a rare cross-account **read** beside resources managed in a primary account).
 
-Aliases are **not** an environment isolation strategy. Using `aws.dev`, `aws.uat`, and `aws.prod` in one shared state does not give each environment its own destroy boundary; it only names different credentials inside the same blast radius.
+Aliases are **not** a way to separate environments. Using `aws.dev`, `aws.uat`, and `aws.prod` in one shared state does not give each environment its own destroy boundary; it only names different credentials inside the same blast radius.
 
 ## When not to rely on aliases
 
@@ -48,7 +48,7 @@ Do not use aliases as the primary way to separate environments or accounts that 
 
 HashiCorp’s guidance on organizing configuration describes **directory-separated environments** and **separate states** as the way to shrink blast radius when environments should not share fate. See [Organize configuration — separate states](https://developer.hashicorp.com/terraform/tutorials/modules/organize-configuration#separate-states).
 
-AWS’s Terraform guidance similarly favors distinct state (or backends) per environment rather than relying on a single shared state for strong isolation. See [Backend best practices](https://docs.aws.amazon.com/prescriptive-guidance/latest/terraform-aws-provider-best-practices/backend.html).
+AWS’s Terraform guidance similarly favors distinct state (or backends) per environment rather than relying on a single shared state when environments need an independent blast radius. See [Backend best practices](https://docs.aws.amazon.com/prescriptive-guidance/latest/terraform-aws-provider-best-practices/backend.html).
 
 **Rule of thumb:** same deployment, another region or secondary config → alias can be fine. Different env or account that must not share destroy risk → separate directory and separate state, one unaliased provider per root.
 
@@ -56,7 +56,7 @@ AWS’s Terraform guidance similarly favors distinct state (or backends) per env
 
 Terraform CLI workspaces give multiple state instances for one configuration and one backend. They are convenient for similar copies of the same stack. They are **not** designed for strong separation when each environment needs different credentials and access controls, because workspaces in a working directory still share that backend. See [CLI workspaces](https://developer.hashicorp.com/terraform/cli/workspaces).
 
-For multi-account environments with real isolation requirements, prefer separate roots and separate state keys (this PoC), not “one root + workspaces + aliases.”
+For multi-account environments that need real separation (separate credentials and destroy boundaries), prefer separate roots and separate state keys (this PoC), not “one root + workspaces + aliases.”
 
 ## PoC conclusion
 
@@ -76,7 +76,7 @@ PREFER (this PoC)
   prod/ --> env/prod/terraform.tfstate
 ```
 
-Provider aliases still belong when one deployment needs multiple provider configurations (for example regions). They do not isolate `dev` / `uat` / `prod` accounts.
+Provider aliases still belong when one deployment needs multiple provider configurations (for example regions). They do not give `dev` / `uat` / `prod` accounts separate state boundaries.
 
 ## Sources
 

@@ -1,8 +1,16 @@
 # tf-env-isolation-poc
 
-Proof of concept for **environment-isolated Terraform**: one directory and one S3 state per environment (`dev` / `uat` / `prod`), replacing a shared multi-account state with aliased providers.
+PoC for **per-environment Terraform state**: one directory and one S3 state per env (`dev` / `uat` / `prod`), instead of one shared state with multi-account provider aliases.
 
-See [docs/poc.md](docs/poc.md) for the full brief.
+## Why
+
+- Shared state plus `aws.dev` / `aws.uat` / `aws.prod` aliases raises blast radius
+- This repo shows the unsafe pattern (`legacy/`) and the corrected per-environment layout
+
+## Docs
+
+- [PoC brief](docs/poc.md)
+- [Context: aliases vs separate state](docs/context.md)
 
 ## Layout
 

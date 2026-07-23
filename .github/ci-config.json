@@ -1,6 +1,6 @@
 {
   "project": "tf-env-isolation-poc",
-  "description": "Environment-isolated Terraform: one directory and one S3 state per environment",
+  "description": "One directory and one S3 state per environment",
   "terraform_version": ">=1.11.0",
   "backend": {
     "type": "s3",

@@ -1,4 +1,4 @@
-# Environment-Isolated Terraform PoC
+# Per-environment Terraform state
 
 ## Objective
 
@@ -35,7 +35,7 @@ provider "aws" {
 }
 ```
 
-That pattern increases blast radius: one `plan` / `apply` / `destroy` can touch the wrong account. It also weakens credential isolation (runners often need access to every account) and makes PR review harder ("what did this change?" spans environments). Unwanted production deletes have already occurred under this model.
+That pattern increases blast radius: one `plan` / `apply` / `destroy` can touch the wrong account. It also weakens credentials (runners often need access to every account) and makes PR review harder ("what did this change?" spans environments). Unwanted production deletes have already occurred under this model.
 
 **Standard correction:** one environment (or account) → one root module → one state → operations scoped to that path with credentials limited to that account.
 
@@ -67,7 +67,7 @@ Each of `dev/`, `uat/`, and `prod/` contains:
 - Exactly **one** unaliased AWS provider for that account (no cross-env aliases)
 - Its own remote state configuration
 
-### State isolation (S3 — no Terraform Cloud)
+### Separate state (S3 — no Terraform Cloud)
 
 | Environment | Directory | Example S3 state key |
 |-------------|-----------|----------------------|
