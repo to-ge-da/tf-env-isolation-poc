@@ -60,9 +60,7 @@ For multi-account environments with real isolation requirements, prefer separate
 
 ## PoC conclusion
 
-This repository’s target model is:
-
-**one environment → one directory → one state**
+This repository’s target model:
 
 ```text
 AVOID (legacy/)
@@ -78,7 +76,7 @@ PREFER (this PoC)
   prod/ --> env/prod/terraform.tfstate
 ```
 
-Use provider aliases only when a single deployment truly needs multiple provider configurations. Do not use aliases to stand in for `dev` / `uat` / `prod` account isolation.
+Provider aliases still belong when one deployment needs multiple provider configurations (for example regions). They do not isolate `dev` / `uat` / `prod` accounts.
 
 ## Sources
 
