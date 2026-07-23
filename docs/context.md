@@ -64,6 +64,20 @@ This repository’s target model is:
 
 **one environment → one directory → one state**
 
+```text
+AVOID (legacy/)
+  [ one root ]
+       |
+  aws.dev / aws.uat / aws.prod
+       |
+  [ one shared state ]
+
+PREFER (this PoC)
+  dev/  --> env/dev/terraform.tfstate
+  uat/  --> env/uat/terraform.tfstate
+  prod/ --> env/prod/terraform.tfstate
+```
+
 Use provider aliases only when a single deployment truly needs multiple provider configurations. Do not use aliases to stand in for `dev` / `uat` / `prod` account isolation.
 
 ## Sources
