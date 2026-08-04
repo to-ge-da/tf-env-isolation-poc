@@ -91,4 +91,8 @@ Same bucket is acceptable; **different keys** mean different state. State lockin
 
 _Config present and `terraform validate`-clean in every env root. No AWS credentials are available in this PoC; nothing has been applied to or verified on a live account._
 
+### Running an environment
+
+Use the root [`justfile`](../justfile) to target a single environment (`just plan dev`, `just apply uat`, …). Recipes resolve the S3 state key from [`.github/ci-config.json`](../.github/ci-config.json); see the state-key table above. There are no multi-env apply/destroy loops. Full command examples are in the [README](../README.md#usage).
+
 See [context.md](context.md) for background on aliases versus separate state.
