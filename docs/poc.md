@@ -96,3 +96,4 @@ _Config present and `terraform validate`-clean in every env root. No AWS credent
 Use the root [`justfile`](../justfile) to target a single environment (`just plan dev`, `just apply uat`, …). Recipes resolve the S3 state key from [`.github/ci-config.json`](../.github/ci-config.json); see the state-key table above. There are no multi-env apply/destroy loops. Full command examples are in the [README](../README.md#usage).
 
 See [context.md](context.md) for background on aliases versus separate state.
+For moving resources out of the shared `legacy/` state into the per-env states, see [migration.md](migration.md).

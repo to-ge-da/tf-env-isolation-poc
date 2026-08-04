@@ -11,6 +11,7 @@ PoC for **per-environment Terraform state**: one directory and one S3 state per 
 
 - [PoC brief](docs/poc.md)
 - [Context: aliases vs separate state](docs/context.md)
+- [State-split migration procedure](docs/migration.md)
 
 ## Layout
 
@@ -19,6 +20,7 @@ dev/    uat/    prod/     # one root module + one state each
 legacy/                   # shared-state multi-account demo
 docs/poc.md               # PoC brief
 docs/context.md           # aliases vs separate state
+docs/migration.md         # state-split migration procedure (legacy → per-env)
 .github/ci-config.json    # structure/state sketch
 justfile                  # env-targeted task runner
 ```
