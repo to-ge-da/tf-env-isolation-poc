@@ -45,14 +45,20 @@ That pattern increases blast radius: one `plan` / `apply` / `destroy` can touch 
 tf-env-isolation-poc/
 ├── dev/
 │   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
 │   ├── versions.tf
 │   └── backend.tf
 ├── uat/
 │   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
 │   ├── versions.tf
 │   └── backend.tf
 ├── prod/
 │   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
 │   ├── versions.tf
 │   └── backend.tf
 └── .github/
@@ -79,8 +85,10 @@ Same bucket is acceptable; **different keys** mean different state. State lockin
 
 ## Success criteria
 
-- [ ] Each environment has its own directory with independent Terraform configuration
-- [ ] Each environment has its own S3 state key (one state per environment)
-- [ ] No cross-environment provider aliases in any env root module
+- [x] Each environment has its own directory with independent Terraform configuration
+- [x] Each environment has its own S3 state key (one state per environment)
+- [x] No cross-environment provider aliases in any env root module
+
+_Config present and `terraform validate`-clean in every env root. No AWS credentials are available in this PoC; nothing has been applied to or verified on a live account._
 
 See [context.md](context.md) for background on aliases versus separate state.
