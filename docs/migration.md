@@ -19,8 +19,8 @@ copy-pasteable templates keyed to this PoC's SSM resources and backends.
 
 > **Recreate when the resource is cheap, derivable, and holds no irreplaceable
 > AWS-side state.** **Use `state mv` only when the AWS-side identity must
-> persist** — IAM roles referenced by ARN elsewhere, log groups with retained
-> history, resources other stacks point at. The PoC's SSM parameters are cheap
+> persist** (IAM roles referenced by ARN elsewhere, log groups with retained
+> history, resources other stacks point at). The PoC's SSM parameters are cheap
 > and derivable → the worked example below uses recreation. `state mv` is taught
 > in full as the secondary method because it is the general, identity-preserving
 > tool.
@@ -30,11 +30,7 @@ Backend: bucket `tf-env-isolation-poc-state`, `use_lockfile = true`.
 
 ---
 
-## Step 0 — Safety: backup, lockfile, rollback stance
-
-**Goal:** recoverable position before touching state.
-
-**Commands:**
+## Step 0: backup, lockfile, rollback stance
 
 ```bash
 terraform -chdir=legacy state pull > "$HOME/legacy-tfstate-backup-$(date +%Y%m%d-%H%M%S).json"
@@ -51,11 +47,7 @@ key during migration.
 
 ---
 
-## Step 1 — Inventory + map table
-
-**Goal:** know exactly what legacy owns and where each item goes.
-
-**Commands:**
+## Step 1: inventory and map table
 
 ```bash
 terraform -chdir=legacy state list
@@ -70,16 +62,12 @@ terraform -chdir=legacy state list
 | `aws_ssm_parameter.uat` | `uat/` | **recreate** | `aws_ssm_parameter.env` |
 | `aws_ssm_parameter.prod` | `prod/` | **recreate** | `aws_ssm_parameter.env` |
 
-**Pitfall:** an env root's `state list` is empty before its first apply — empty
+**Pitfall:** an env root's `state list` is empty before its first apply; empty
 `state pull` from a target root is normal, not an error.
 
 ---
 
-## Step 2 — Prepare the target roots
-
-**Goal:** each env root is init'd and its config declares the resource it will own.
-
-**Commands:**
+## Step 2: prepare the target roots
 
 ```bash
 terraform -chdir=dev init
@@ -101,13 +89,13 @@ you intend to own.
 
 ---
 
-## Step 3 — Move, Method A (PRIMARY): Recreation
+## Step 3: recreation (method A, primary)
 
 For cheap, derivable resources with no irreplaceable AWS-side state, create the
 new object first, verify, then release the old. This sidesteps ForceNew replace
-entirely — the right lead method for this PoC's SSM parameters.
+entirely, the right lead method for this PoC's SSM parameters.
 
-### Worked example — `dev`
+### Worked example: dev
 
 #### 1. Declare
 
@@ -134,10 +122,6 @@ verbatim and differs from that default.
 
 #### 3. Plan (create only)
 
-**Goal:** confirm the env root will only add, not destroy.
-
-**Commands:**
-
 ```bash
 terraform -chdir=dev plan
 ```
@@ -146,8 +130,6 @@ terraform -chdir=dev plan
 group on a fresh env root).
 
 #### 4. Apply
-
-**Commands:**
 
 ```bash
 terraform -chdir=dev apply
@@ -158,11 +140,6 @@ owns `aws_ssm_parameter.env`.
 
 #### 5. Release the legacy resource
 
-**Goal:** stop managing the old parameter from the shared state (recommended:
-`state rm` so destroy is not later applied by accident from `legacy/`).
-
-**Commands:**
-
 ```bash
 terraform -chdir=legacy state rm aws_ssm_parameter.dev
 ```
@@ -172,12 +149,10 @@ Alternatively leave it in legacy state and destroy later in Step 7; prefer
 
 After `state rm`, remove the migrated resource block from `legacy/main.tf`
 (and any now-unused alias provider config in `legacy/providers.tf` if no longer
-referenced). State and config must stay paired — otherwise legacy plan wants
+referenced). State and config must stay paired; otherwise legacy plan wants
 to recreate what you just released.
 
 #### 6. Verify both sides
-
-**Commands:**
 
 ```bash
 terraform -chdir=dev plan
@@ -186,7 +161,7 @@ terraform -chdir=legacy plan
 
 **Expected:** `dev/` → "No changes." After `state rm` alone, while
 `aws_ssm_parameter.dev` still remains in `legacy/main.tf`, the legacy plan
-shows **1 to add** (a re-create for the moved address) — that is expected, not
+shows **1 to add** (a re-create for the moved address); that is expected, not
 an error. The "dev param no longer managed; only uat/prod remain" outcome is
 true only once the corresponding block is **removed from `legacy/main.tf`**
 (see §5 above). After that edit, legacy plan no longer proposes the re-create
@@ -221,15 +196,13 @@ terraform -chdir=legacy state rm aws_ssm_parameter.prod
 
 ---
 
-## Step 4 — Move, Method B (SECONDARY): `state mv` (identity-preserving)
+## Step 4: state mv (method B, secondary, identity-preserving)
 
-Use when AWS-side identity must persist — IAM roles referenced by ARN from
+Use when AWS-side identity must persist (IAM roles referenced by ARN from
 outside Terraform, log groups with retained history, anything another stack
-addresses. Complete teaching below; nothing removed from the procedure.
-
-**Goal:** move the state binding without destroy/create.
-
-**Commands** (pull/push around `-state`/`-state-out` — canonical cross-backend form):
+addresses). Complete teaching below; nothing removed from the procedure.
+Move the state binding without destroy/create. Use pull/push around
+`-state`/`-state-out` (canonical cross-backend form):
 
 ```bash
 # Pull both states locally
@@ -248,7 +221,7 @@ terraform -chdir=legacy state push /tmp/legacy.tfstate
 After the move, **remove the migrated resource block(s) from `legacy/main.tf`**
 (and the now-unused alias provider config(s) in `legacy/providers.tf` if they
 are no longer referenced) so the legacy config no longer declares the migrated
-resource — otherwise legacy `plan` will want to recreate it. Until
+resource; otherwise legacy `plan` will want to recreate it. Until
 `legacy/main.tf` is edited, the legacy plan may show a re-create for the moved
 address; removing the block resolves it. When done, the resource must exist in
 **exactly one state and one config**.
@@ -258,16 +231,16 @@ address; removing the block resolves it. When done, the resource must exist in
 
 | Mechanism | When | Cross-state? |
 |---|---|---|
-| `moved {}` block | preferred when source and target are the **same** state file; add before apply, remove after | **No** — cannot cross state files |
-| `state mv` | required here | **Yes** — the only mechanism that crosses state files/backends |
+| `moved {}` block | preferred when source and target are the **same** state file; add before apply, remove after | **No** (cannot cross state files) |
+| `state mv` | required here | **Yes** (the only mechanism that crosses state files/backends) |
 
 **Honest limitation:** for the PoC's SSM, `state mv` alone is **not**
-sufficient — after the move, `terraform plan` in `dev/` proposes **replace**
+sufficient. After the move, `terraform plan` in `dev/` proposes **replace**
 because the declared `name` (`/tf-env-isolation-poc/dev/deployed-by`) differs
 from state's (`/tf-env-isolation-poc/legacy/dev`) and `name` is ForceNew. The
 happy path for `state mv` is when the declared target name **matches** the
 existing AWS object. If identity must be preserved, keep the legacy `name` in
-env config, move state, rename later via normal apply if not ForceNew — or
+env config, move state, rename later via normal apply if not ForceNew, or
 accept the replace, which is why recreation (Step 3) is the lead method.
 
 **Expected (happy path only):** `terraform -chdir=dev plan` → "No changes.";
@@ -276,19 +249,15 @@ legacy plan no longer proposes a re-create for the moved address.
 
 **Pitfalls:**
 
-- Stale push — verify `serial`/`lineage` before `state push` (see Step 0); avoid `-force` except deliberately.
-- Push **both** local state files — omitting the legacy push leaves the address bound in two backends (dual-management hazard).
+- Stale push: verify `serial`/`lineage` before `state push` (see Step 0); avoid `-force` except deliberately.
+- Push **both** local state files (omitting the legacy push leaves the address bound in two backends, dual-management hazard).
 - After `state mv`, remove the migrated block from `legacy/main.tf` (and unused alias providers); otherwise legacy plan shows a re-create.
 - `moved {}` cannot cross state files; only `state mv` crosses; add `moved {}` before apply and remove after when staying in one state.
 - Empty target `state pull` before first apply is normal (see Step 1).
 
 ---
 
-## Step 5 — Verification ("no changes")
-
-**Goal:** every root clean.
-
-**Commands:**
+## Step 5: verification ("no changes")
 
 ```bash
 terraform -chdir=dev plan
@@ -298,18 +267,14 @@ terraform -chdir=legacy plan
 ```
 
 **Expected:** "No changes." in all four (legacy shows only what was intentionally
-left — ideally empty of env resources after Steps 3–4).
+left, ideally empty of env resources after Steps 3–4).
 
 **Pitfall:** a `replace` after `state mv` means ForceNew mismatch → back to the
 decision rule; recreate (Step 3) is the exit.
 
 ---
 
-## Step 6 — Rollback
-
-**Goal:** undo a partial migration.
-
-**Commands:**
+## Step 6: rollback
 
 ```bash
 # Restore legacy state from the Step 0 backup (check serial/lineage first)
@@ -328,11 +293,10 @@ restore.
 
 ---
 
-## Step 7 — Decommission `legacy/`
+## Step 7: decommission legacy/
 
-**Goal:** retire the shared state only after all envs verified.
-
-**Commands** (after Step 5 is green for all envs):
+Retire the shared state only after all envs verified. After Step 5 is green for
+all envs:
 
 ```bash
 terraform -chdir=legacy destroy        # removes anything still owned (if state rm was skipped)
@@ -343,13 +307,13 @@ aws s3 rm s3://tf-env-isolation-poc-state/env/legacy/terraform.tfstate   # only 
 S3 after backups exist (local JSON + `.bak` from Step 0).
 
 **Pitfall:** backup the legacy state key **before** removing it; decommission
-**only** after all three envs verified — `legacy/` is the safety net until then.
+**only** after all three envs verified. `legacy/` is the safety net until then.
 
 ---
 
 ## Pitfalls checklist
 
-- [ ] Empty target `state pull` before first apply — normal, not an error (Step 1)
+- [ ] Empty target `state pull` before first apply: normal, not an error (Step 1)
 - [ ] `moved {}` cannot cross state files; only `state mv` crosses; `moved {}` added before apply, removed after (Step 4)
 - [ ] Never push a stale state; serial/lineage check; `-force` only deliberately (Steps 0, 4, 6)
 - [ ] Provider alias not in stored address; moved resource manageable by target's unaliased provider (Steps 2, 4)
