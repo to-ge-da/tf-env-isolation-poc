@@ -170,6 +170,11 @@ terraform -chdir=legacy state rm aws_ssm_parameter.dev
 Alternatively leave it in legacy state and destroy later in Step 7; prefer
 `state rm` once the new param is verified.
 
+After `state rm`, remove the migrated resource block from `legacy/main.tf`
+(and any now-unused alias provider config in `legacy/providers.tf` if no longer
+referenced). State and config must stay paired — otherwise legacy plan wants
+to recreate what you just released.
+
 #### 6. Verify both sides
 
 **Commands:**
@@ -179,8 +184,13 @@ terraform -chdir=dev plan
 terraform -chdir=legacy plan
 ```
 
-**Expected:** `dev/` → "No changes."; `legacy/` plan no longer manages the
-`dev` parameter (uat/prod still present until you repeat).
+**Expected:** `dev/` → "No changes." After `state rm` alone, while
+`aws_ssm_parameter.dev` still remains in `legacy/main.tf`, the legacy plan
+shows **1 to add** (a re-create for the moved address) — that is expected, not
+an error. The "dev param no longer managed; only uat/prod remain" outcome is
+true only once the corresponding block is **removed from `legacy/main.tf`**
+(see §5 above). After that edit, legacy plan no longer proposes the re-create
+(uat/prod still present until you repeat).
 
 **Pitfall:** brief dual-existence window (old + new coexist until
 `state rm`/destroy). Harmless for SSM `String` params with different names;
@@ -222,12 +232,26 @@ addresses. Complete teaching below; nothing removed from the procedure.
 **Commands** (pull/push around `-state`/`-state-out` — canonical cross-backend form):
 
 ```bash
+# Pull both states locally
 terraform -chdir=legacy state pull > /tmp/legacy.tfstate
 terraform -chdir=dev    state pull > /tmp/dev.tfstate    # may be empty pre-first-apply
+
+# Move within local files (removes the address from the legacy copy, adds it to the dev copy)
 terraform state mv -state=/tmp/legacy.tfstate -state-out=/tmp/dev.tfstate \
   aws_ssm_parameter.dev aws_ssm_parameter.env
-terraform -chdir=dev state push /tmp/dev.tfstate
+
+# Push BOTH updated local states back to their backends
+terraform -chdir=dev    state push /tmp/dev.tfstate
+terraform -chdir=legacy state push /tmp/legacy.tfstate
 ```
+
+After the move, **remove the migrated resource block(s) from `legacy/main.tf`**
+(and the now-unused alias provider config(s) in `legacy/providers.tf` if they
+are no longer referenced) so the legacy config no longer declares the migrated
+resource — otherwise legacy `plan` will want to recreate it. Until
+`legacy/main.tf` is edited, the legacy plan may show a re-create for the moved
+address; removing the block resolves it. When done, the resource must exist in
+**exactly one state and one config**.
 
 **Address rewrites:** the stored address contains no provider alias →
 `aws_ssm_parameter.dev` → `aws_ssm_parameter.env` is a plain rename. Two ways:
@@ -246,11 +270,15 @@ existing AWS object. If identity must be preserved, keep the legacy `name` in
 env config, move state, rename later via normal apply if not ForceNew — or
 accept the replace, which is why recreation (Step 3) is the lead method.
 
-**Expected (happy path only):** `terraform -chdir=dev plan` → "No changes."
+**Expected (happy path only):** `terraform -chdir=dev plan` → "No changes.";
+after pushing both states **and** removing the block from `legacy/main.tf`,
+legacy plan no longer proposes a re-create for the moved address.
 
 **Pitfalls:**
 
 - Stale push — verify `serial`/`lineage` before `state push` (see Step 0); avoid `-force` except deliberately.
+- Push **both** local state files — omitting the legacy push leaves the address bound in two backends (dual-management hazard).
+- After `state mv`, remove the migrated block from `legacy/main.tf` (and unused alias providers); otherwise legacy plan shows a re-create.
 - `moved {}` cannot cross state files; only `state mv` crosses; add `moved {}` before apply and remove after when staying in one state.
 - Empty target `state pull` before first apply is normal (see Step 1).
 
