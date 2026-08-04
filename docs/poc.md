@@ -73,7 +73,7 @@ Each of `dev/`, `uat/`, and `prod/` contains:
 - Exactly **one** unaliased AWS provider for that account (no cross-env aliases)
 - Its own remote state configuration
 
-### Separate state (S3 — no Terraform Cloud)
+### Separate state (S3, no Terraform Cloud)
 
 | Environment | Directory | Example S3 state key |
 |-------------|-----------|----------------------|
