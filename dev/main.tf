@@ -1,23 +1,35 @@
-# PoC demo resource (no AWS account required).
-# When wiring real infra, use a single unaliased provider, e.g.:
-#
-# provider "aws" {
-#   region = "us-east-1"
-#   # credentials / assume_role for the DEV account only
-# }
+# One unaliased provider, scoped to the dev account only.
+# Contrast with legacy/ where one root uses aws.dev / aws.uat / aws.prod aliases.
+provider "aws" {
+  region = var.region
 
-resource "random_id" "poc" {
-  byte_length = 4
+  assume_role {
+    role_arn     = var.deploy_role_arn
+    session_name = "terraform-dev"
+  }
 
-  keepers = {
-    environment = "dev"
+  default_tags {
+    tags = local.common_tags
   }
 }
 
-output "environment" {
-  value = "dev"
+locals {
+  common_tags = merge(
+    {
+      Environment = "dev"
+      ManagedBy   = "terraform"
+    },
+    var.tags,
+  )
 }
 
-output "poc_id" {
-  value = random_id.poc.hex
+resource "aws_ssm_parameter" "env" {
+  name  = "/tf-env-isolation-poc/dev/deployed-by"
+  type  = "String"
+  value = "terraform-dev"
+}
+
+resource "aws_cloudwatch_log_group" "poc" {
+  name              = "/tf-env-isolation-poc/dev"
+  retention_in_days = 7
 }
