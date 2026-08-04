@@ -94,13 +94,41 @@ jobs:
             ' "$CONFIG")
           fi
 
+          # Validate matrix values before emitting (trusted constants for downstream jobs)
+          SAFE_RE='^[a-z0-9][a-z0-9_-]*$'
+          INCLUDE_COUNT=$(echo "$MATRIX" | jq '.include | length')
+          if [ "$INCLUDE_COUNT" -gt 0 ]; then
+            for i in $(seq 0 $((INCLUDE_COUNT - 1))); do
+              ENV_NAME=$(echo "$MATRIX" | jq -r --argjson i "$i" '.include[$i].env')
+              ENV_PATH=$(echo "$MATRIX" | jq -r --argjson i "$i" '.include[$i].path')
+
+              if [[ ! "$ENV_NAME" =~ $SAFE_RE ]]; then
+                echo "::error::Invalid env name '${ENV_NAME}': must match ${SAFE_RE}"
+                exit 1
+              fi
+              if ! jq -e --arg e "$ENV_NAME" '.environments | has($e)' "$CONFIG" >/dev/null; then
+                echo "::error::env '${ENV_NAME}' is not a key in ci-config.json .environments"
+                exit 1
+              fi
+              if [[ ! "$ENV_PATH" =~ $SAFE_RE ]]; then
+                echo "::error::Invalid path '${ENV_PATH}' for env '${ENV_NAME}': must match ${SAFE_RE}"
+                exit 1
+              fi
+              EXPECTED_PATH=$(jq -r --arg e "$ENV_NAME" '.environments[$e].path' "$CONFIG")
+              if [ "$ENV_PATH" != "$EXPECTED_PATH" ]; then
+                echo "::error::path '${ENV_PATH}' for env '${ENV_NAME}' does not match ci-config.json (.environments.${ENV_NAME}.path='${EXPECTED_PATH}')"
+                exit 1
+              fi
+            done
+          fi
+
           echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
           echo "Built matrix: ${MATRIX}"
 
   fmt:
     runs-on: ubuntu-latest
     needs: setup
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    if: github.event_name == 'pull_request'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -120,6 +148,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+    env:
+      ENV_PATH: ${{ matrix.path }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -130,10 +160,10 @@ jobs:
           terraform_version: ${{ needs.setup.outputs.terraform_version }}
 
       - name: Terraform init (no backend)
-        run: terraform -chdir=${{ matrix.path }} init -backend=false -input=false
+        run: terraform -chdir="$ENV_PATH" init -backend=false -input=false
 
       - name: Terraform validate
-        run: terraform -chdir=${{ matrix.path }} validate
+        run: terraform -chdir="$ENV_PATH" validate
 
   plan:
     runs-on: ubuntu-latest
@@ -147,15 +177,27 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     env:
-      DEPLOY_ROLE_ARN: ${{ matrix.env == 'dev' && secrets.DEV_DEPLOY_ROLE_ARN || matrix.env == 'uat' && secrets.UAT_DEPLOY_ROLE_ARN || secrets.PROD_DEPLOY_ROLE_ARN }}
+      ENV_NAME: ${{ matrix.env }}
+      ENV_PATH: ${{ matrix.path }}
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      DEV_DEPLOY_ROLE_ARN: ${{ secrets.DEV_DEPLOY_ROLE_ARN }}
+      UAT_DEPLOY_ROLE_ARN: ${{ secrets.UAT_DEPLOY_ROLE_ARN }}
+      PROD_DEPLOY_ROLE_ARN: ${{ secrets.PROD_DEPLOY_ROLE_ARN }}
     steps:
       - name: Guard deploy role ARN
         run: |
+          set -euo pipefail
+          case "$ENV_NAME" in
+            dev)  DEPLOY_ROLE_ARN="${DEV_DEPLOY_ROLE_ARN:-}" ;;
+            uat)  DEPLOY_ROLE_ARN="${UAT_DEPLOY_ROLE_ARN:-}" ;;
+            prod) DEPLOY_ROLE_ARN="${PROD_DEPLOY_ROLE_ARN:-}" ;;
+            *)    DEPLOY_ROLE_ARN="" ;;
+          esac
           if [ -z "$DEPLOY_ROLE_ARN" ]; then
-            echo "::error::Missing secret <ENV>_DEPLOY_ROLE_ARN for '${{ matrix.env }}'. Set it in repo Settings → Secrets. See PR body for manual setup."
+            echo "::error::Missing secret <ENV>_DEPLOY_ROLE_ARN for '${ENV_NAME}'. Set it in repo Settings → Secrets. See PR body for manual setup."
             exit 1
           fi
+          echo "DEPLOY_ROLE_ARN=${DEPLOY_ROLE_ARN}" >> "$GITHUB_ENV"
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -165,7 +207,7 @@ jobs:
         with:
           role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: tf-ci-${{ matrix.env }}-${{ github.run_id }}
+          role-session-name: tf-ci-${{ env.ENV_NAME }}-${{ github.run_id }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -173,31 +215,29 @@ jobs:
           terraform_version: ${{ needs.setup.outputs.terraform_version }}
 
       - name: Terraform init
-        run: terraform -chdir=${{ matrix.path }} init -input=false
+        run: terraform -chdir="$ENV_PATH" init -input=false
 
       - name: Terraform plan
         id: plan
         run: |
-          set -o pipefail
-          terraform -chdir=${{ matrix.path }} plan -out=tfplan-${{ matrix.env }} -input=false -no-color 2>&1 | tee plan-${{ matrix.env }}.txt
+          set -euo pipefail
+          terraform -chdir="$ENV_PATH" plan -out="tfplan-${ENV_NAME}" -input=false -no-color 2>&1 | tee "plan-${ENV_NAME}.txt"
           # Move plan file to workspace root for artifact upload
-          mv ${{ matrix.path }}/tfplan-${{ matrix.env }} tfplan-${{ matrix.env }} || true
+          mv "$ENV_PATH/tfplan-${ENV_NAME}" "tfplan-${ENV_NAME}"
 
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
         with:
           name: tfplan-${{ matrix.env }}
-          path: tfplan-${{ matrix.env }}
+          path: tfplan-${{ env.ENV_NAME }}
           retention-days: 5
 
       - name: Post / update plan comment
         uses: actions/github-script@v7
-        env:
-          PLAN_ENV: ${{ matrix.env }}
         with:
           script: |
             const fs = require('fs');
-            const env = process.env.PLAN_ENV;
+            const env = process.env.ENV_NAME;
             const marker = `<!-- tf-plan-${env} -->`;
             let plan = '';
             try {
@@ -223,10 +263,11 @@ jobs:
               '</details>',
             ].join('\n');
 
-            const { data: comments } = await github.rest.issues.listComments({
+            const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
+              per_page: 100,
             });
             const existing = comments.find(c => c.body && c.body.includes(marker));
             if (existing) {
@@ -263,15 +304,27 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     env:
-      DEPLOY_ROLE_ARN: ${{ matrix.env == 'dev' && secrets.DEV_DEPLOY_ROLE_ARN || matrix.env == 'uat' && secrets.UAT_DEPLOY_ROLE_ARN || secrets.PROD_DEPLOY_ROLE_ARN }}
+      ENV_NAME: ${{ matrix.env }}
+      ENV_PATH: ${{ matrix.path }}
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      DEV_DEPLOY_ROLE_ARN: ${{ secrets.DEV_DEPLOY_ROLE_ARN }}
+      UAT_DEPLOY_ROLE_ARN: ${{ secrets.UAT_DEPLOY_ROLE_ARN }}
+      PROD_DEPLOY_ROLE_ARN: ${{ secrets.PROD_DEPLOY_ROLE_ARN }}
     steps:
       - name: Guard deploy role ARN
         run: |
+          set -euo pipefail
+          case "$ENV_NAME" in
+            dev)  DEPLOY_ROLE_ARN="${DEV_DEPLOY_ROLE_ARN:-}" ;;
+            uat)  DEPLOY_ROLE_ARN="${UAT_DEPLOY_ROLE_ARN:-}" ;;
+            prod) DEPLOY_ROLE_ARN="${PROD_DEPLOY_ROLE_ARN:-}" ;;
+            *)    DEPLOY_ROLE_ARN="" ;;
+          esac
           if [ -z "$DEPLOY_ROLE_ARN" ]; then
-            echo "::error::Missing secret <ENV>_DEPLOY_ROLE_ARN for '${{ matrix.env }}'. Set it in repo Settings → Secrets. See PR body for manual setup."
+            echo "::error::Missing secret <ENV>_DEPLOY_ROLE_ARN for '${ENV_NAME}'. Set it in repo Settings → Secrets. See PR body for manual setup."
             exit 1
           fi
+          echo "DEPLOY_ROLE_ARN=${DEPLOY_ROLE_ARN}" >> "$GITHUB_ENV"
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -281,7 +334,7 @@ jobs:
         with:
           role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: tf-ci-${{ matrix.env }}-${{ github.run_id }}
+          role-session-name: tf-ci-${{ env.ENV_NAME }}-${{ github.run_id }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -289,7 +342,7 @@ jobs:
           terraform_version: ${{ needs.setup.outputs.terraform_version }}
 
       - name: Terraform init
-        run: terraform -chdir=${{ matrix.path }} init -input=false
+        run: terraform -chdir="$ENV_PATH" init -input=false
 
       - name: Terraform apply
-        run: terraform -chdir=${{ matrix.path }} apply -auto-approve -input=false
+        run: terraform -chdir="$ENV_PATH" apply -auto-approve -input=false
