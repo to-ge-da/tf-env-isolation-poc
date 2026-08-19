@@ -2,4 +2,13 @@
 *.tfstate
 *.tfstate.*
 *.tfvars
-.terraform.lock.hcl
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.tfstate.lock.info
+
+# Commit lockfiles for root modules (reproducible provider versions).
+# Do not ignore .terraform.lock.hcl.

@@ -7,13 +7,21 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: Environment to apply
+        description: Environment to plan or apply
         required: true
         type: choice
         options:
           - dev
           - uat
           - prod
+      command:
+        description: Terraform command (apply is dispatch-only; never runs on push)
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+        default: plan
 
 permissions:
   contents: read
@@ -28,32 +36,43 @@ jobs:
     steps:
       - name: Checkout
         if: github.event_name != 'workflow_dispatch'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Detect changed environments
         if: github.event_name != 'workflow_dispatch'
         id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
         with:
           filters: |
             dev:
               - 'dev/**'
+              - 'modules/**'
+              - '.github/ci-config.json'
             uat:
               - 'uat/**'
+              - 'modules/**'
+              - '.github/ci-config.json'
             prod:
               - 'prod/**'
+              - 'modules/**'
+              - '.github/ci-config.json'
 
   setup:
     runs-on: ubuntu-latest
     needs: changes
     outputs:
-      matrix: ${{ steps.build.outputs.matrix }}
       terraform_version: ${{ steps.build.outputs.terraform_version }}
+      validate_matrix: ${{ steps.build.outputs.validate_matrix }}
+      env_matrix: ${{ steps.build.outputs.env_matrix }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - name: Build matrix from ci-config.json
+      - name: Build matrices from ci-config.json
         id: build
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -65,8 +84,16 @@ jobs:
           set -euo pipefail
           CONFIG=".github/ci-config.json"
           TF_VERSION=$(jq -r '.terraform_version' "$CONFIG")
+          if [[ ! "$TF_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::terraform_version must be a pinned x.y.z (got '${TF_VERSION}')"
+            exit 1
+          fi
           echo "terraform_version=${TF_VERSION}" >> "$GITHUB_OUTPUT"
 
+          VALIDATE=$(jq -c '{include: [.validate_roots[] | {root: .}]}' "$CONFIG")
+          echo "validate_matrix=${VALIDATE}" >> "$GITHUB_OUTPUT"
+
+          SAFE_RE='^[a-z0-9][a-z0-9_-]*$'
           VALID_ENVS=$(jq -r '.environments | keys | join(", ")' "$CONFIG")
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
@@ -94,8 +121,6 @@ jobs:
             ' "$CONFIG")
           fi
 
-          # Validate matrix values before emitting (trusted constants for downstream jobs)
-          SAFE_RE='^[a-z0-9][a-z0-9_-]*$'
           INCLUDE_COUNT=$(echo "$MATRIX" | jq '.include | length')
           if [ "$INCLUDE_COUNT" -gt 0 ]; then
             for i in $(seq 0 $((INCLUDE_COUNT - 1))); do
@@ -122,60 +147,85 @@ jobs:
             done
           fi
 
-          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
-          echo "Built matrix: ${MATRIX}"
+          echo "env_matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+          echo "Built validate matrix: ${VALIDATE}"
+          echo "Built env matrix: ${MATRIX}"
 
   fmt:
     runs-on: ubuntu-latest
     needs: setup
-    if: github.event_name == 'pull_request'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: ${{ needs.setup.outputs.terraform_version }}
+          terraform_wrapper: false
 
       - name: Terraform fmt
         run: terraform fmt -check -recursive
 
+  isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Forbid provider aliases in per-env roots
+        run: |
+          set -euo pipefail
+          if grep -R --include='*.tf' -nE 'alias[[:space:]]*=' dev uat prod modules; then
+            echo "::error::provider aliases are forbidden under per-env roots and modules/"
+            exit 1
+          fi
+          echo "ok: no provider aliases in dev/, uat/, prod/, or modules/"
+
   validate:
     runs-on: ubuntu-latest
     needs: setup
-    if: github.event_name == 'pull_request' && needs.setup.outputs.matrix != '{"include":[]}'
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.setup.outputs.validate_matrix) }}
     env:
-      ENV_PATH: ${{ matrix.path }}
+      ROOT: ${{ matrix.root }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: ${{ needs.setup.outputs.terraform_version }}
+          terraform_wrapper: false
 
       - name: Terraform init (no backend)
-        run: terraform -chdir="$ENV_PATH" init -backend=false -input=false
+        run: terraform -chdir="$ROOT" init -backend=false -input=false
 
       - name: Terraform validate
-        run: terraform -chdir="$ENV_PATH" validate
+        run: terraform -chdir="$ROOT" validate
 
   plan:
     runs-on: ubuntu-latest
-    needs: [setup, validate]
-    if: github.event_name == 'pull_request' && needs.setup.outputs.matrix != '{"include":[]}'
+    needs: [setup, validate, fmt, isolation]
+    if: >
+      needs.setup.outputs.env_matrix != '{"include":[]}' &&
+      (github.event_name == 'pull_request' ||
+       (github.event_name == 'workflow_dispatch' && inputs.command == 'plan'))
     permissions:
       contents: read
       id-token: write
       pull-requests: write
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.setup.outputs.env_matrix) }}
     env:
       ENV_NAME: ${{ matrix.env }}
       ENV_PATH: ${{ matrix.path }}
@@ -184,7 +234,8 @@ jobs:
       UAT_DEPLOY_ROLE_ARN: ${{ secrets.UAT_DEPLOY_ROLE_ARN }}
       PROD_DEPLOY_ROLE_ARN: ${{ secrets.PROD_DEPLOY_ROLE_ARN }}
     steps:
-      - name: Guard deploy role ARN
+      - name: Resolve deploy role ARN
+        id: role
         run: |
           set -euo pipefail
           case "$ENV_NAME" in
@@ -194,46 +245,57 @@ jobs:
             *)    DEPLOY_ROLE_ARN="" ;;
           esac
           if [ -z "$DEPLOY_ROLE_ARN" ]; then
-            echo "::error::Missing secret <ENV>_DEPLOY_ROLE_ARN for '${ENV_NAME}'. Set it in repo Settings → Secrets. See PR body for manual setup."
-            exit 1
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No <ENV>_DEPLOY_ROLE_ARN for '${ENV_NAME}'. Skipping remote plan (validate-only PoC)."
+            exit 0
           fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
           echo "DEPLOY_ROLE_ARN=${DEPLOY_ROLE_ARN}" >> "$GITHUB_ENV"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        if: steps.role.outputs.configured == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        if: steps.role.outputs.configured == 'true'
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: tf-ci-${{ env.ENV_NAME }}-${{ github.run_id }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        if: steps.role.outputs.configured == 'true'
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: ${{ needs.setup.outputs.terraform_version }}
+          terraform_wrapper: false
 
       - name: Terraform init
+        if: steps.role.outputs.configured == 'true'
         run: terraform -chdir="$ENV_PATH" init -input=false
 
       - name: Terraform plan
+        if: steps.role.outputs.configured == 'true'
         id: plan
         run: |
           set -euo pipefail
           terraform -chdir="$ENV_PATH" plan -out="tfplan-${ENV_NAME}" -input=false -no-color 2>&1 | tee "plan-${ENV_NAME}.txt"
-          # Move plan file to workspace root for artifact upload
           mv "$ENV_PATH/tfplan-${ENV_NAME}" "tfplan-${ENV_NAME}"
 
       - name: Upload plan artifact
-        uses: actions/upload-artifact@v4
+        if: steps.role.outputs.configured == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: tfplan-${{ matrix.env }}
           path: tfplan-${{ env.ENV_NAME }}
           retention-days: 5
 
       - name: Post / update plan comment
-        uses: actions/github-script@v7
+        if: steps.role.outputs.configured == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const fs = require('fs');
@@ -290,9 +352,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup
     if: >
-      needs.setup.outputs.matrix != '{"include":[]}' &&
-      (github.event_name == 'workflow_dispatch' ||
-       (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+      github.event_name == 'workflow_dispatch' &&
+      inputs.command == 'apply' &&
+      needs.setup.outputs.env_matrix != '{"include":[]}'
     permissions:
       contents: read
       id-token: write
@@ -302,7 +364,7 @@ jobs:
       cancel-in-progress: false
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.setup.outputs.env_matrix) }}
     env:
       ENV_NAME: ${{ matrix.env }}
       ENV_PATH: ${{ matrix.path }}
@@ -321,25 +383,28 @@ jobs:
             *)    DEPLOY_ROLE_ARN="" ;;
           esac
           if [ -z "$DEPLOY_ROLE_ARN" ]; then
-            echo "::error::Missing secret <ENV>_DEPLOY_ROLE_ARN for '${ENV_NAME}'. Set it in repo Settings → Secrets. See PR body for manual setup."
+            echo "::error::Missing secret <ENV>_DEPLOY_ROLE_ARN for '${ENV_NAME}'. Set it in repo Settings → Secrets before apply."
             exit 1
           fi
           echo "DEPLOY_ROLE_ARN=${DEPLOY_ROLE_ARN}" >> "$GITHUB_ENV"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: tf-ci-${{ env.ENV_NAME }}-${{ github.run_id }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: ${{ needs.setup.outputs.terraform_version }}
+          terraform_wrapper: false
 
       - name: Terraform init
         run: terraform -chdir="$ENV_PATH" init -input=false

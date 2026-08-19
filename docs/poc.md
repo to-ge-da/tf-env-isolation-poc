@@ -9,6 +9,8 @@ This PoC establishes:
 - Lowercase environment directories: `dev/`, `uat/`, `prod/`
 - **One Terraform state per environment** (S3 backend, distinct state keys)
 - No cross-environment AWS provider aliases in any env root module
+- Shared resource code in `modules/poc/` (isolation is the root + state, not a unique copy of every `.tf` file)
+- CI that stays green **without AWS**: `fmt`, isolation grep, `validate` on every root including `legacy/`
 
 ## Why the current pattern is not good practice
 
@@ -43,35 +45,30 @@ That pattern increases blast radius: one `plan` / `apply` / `destroy` can touch 
 
 ```
 tf-env-isolation-poc/
+├── modules/poc/          # shared stack (SSM parameter + log group)
 ├── dev/
-│   ├── main.tf
+│   ├── main.tf           # unaliased provider + module.stack
 │   ├── variables.tf
 │   ├── outputs.tf
 │   ├── versions.tf
 │   └── backend.tf
-├── uat/
-│   ├── main.tf
-│   ├── variables.tf
-│   ├── outputs.tf
-│   ├── versions.tf
-│   └── backend.tf
+├── uat/                  # same shape, own state key
 ├── prod/
-│   ├── main.tf
-│   ├── variables.tf
-│   ├── outputs.tf
-│   ├── versions.tf
-│   └── backend.tf
+├── legacy/               # anti-pattern (shared state + aliases)
 └── .github/
-    └── ci-config.json
+    ├── ci-config.json
+    └── workflows/terraform-env.yml
 ```
 
 ### Environment separation
 
 Each of `dev/`, `uat/`, and `prod/` contains:
 
-- Environment-specific Terraform configuration
+- A thin root: environment-specific provider, backend, and module call
 - Exactly **one** unaliased AWS provider for that account (no cross-env aliases)
 - Its own remote state configuration
+
+`modules/poc/` is called independently from each root. Sharing the module does **not** share state.
 
 ### Separate state (S3, no Terraform Cloud)
 
@@ -87,9 +84,13 @@ Same bucket is acceptable; **different keys** mean different state. State lockin
 
 - [x] Each environment has its own directory with independent Terraform configuration
 - [x] Each environment has its own S3 state key (one state per environment)
-- [x] No cross-environment provider aliases in any env root module
+- [x] No cross-environment provider aliases in any env root module (`just check-isolation`)
+- [x] Config present and `terraform validate`-clean in every env root **and** `legacy/` (`just ci`)
+- [x] CI fmt + isolation + validate on PR/`main` without AWS credentials
+- [x] Apply is explicit (`workflow_dispatch`), never on push to `main`
+- [ ] Live `plan`/`apply` against real accounts — needs bucket, OIDC roles, and GitHub secrets; see [aws-setup.md](aws-setup.md)
 
-_Config present and `terraform validate`-clean in every env root. No AWS credentials are available in this PoC; nothing has been applied to or verified on a live account._
+_No AWS credentials are available in this PoC; nothing has been applied to or verified on a live account._
 
 ### Running an environment
 
@@ -97,3 +98,4 @@ Use the root [`justfile`](../justfile) to target a single environment (`just pla
 
 See [context.md](context.md) for background on aliases versus separate state.
 For moving resources out of the shared `legacy/` state into the per-env states, see [migration.md](migration.md).
+For wiring a real backend and GitHub OIDC, see [aws-setup.md](aws-setup.md).

@@ -1,0 +1,5 @@
+region = "us-east-1"
+
+# Optional. Leave commented to use ambient AWS credentials.
+# Set this when running locally against an account that requires assume-role.
+# deploy_role_arn = "arn:aws:iam::333333333333:role/ProdTerraformDeployRole"

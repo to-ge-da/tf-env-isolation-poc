@@ -1,11 +1,14 @@
 {
   "project": "tf-env-isolation-poc",
   "description": "One directory and one S3 state per environment",
-  "terraform_version": ">=1.11.0",
+  "terraform_version": "1.15.9",
   "backend": {
     "type": "s3",
+    "bucket": "tf-env-isolation-poc-state",
+    "region": "us-east-1",
     "note": "No Terraform Cloud. One state key per environment; native S3 lockfiles (use_lockfile)."
   },
+  "validate_roots": ["dev", "uat", "prod", "legacy"],
   "environments": {
     "dev": {
       "path": "dev",
