@@ -13,7 +13,7 @@ copy-pasteable templates keyed to this PoC's SSM resources and backends.
 
 | Aspect | Legacy | Per-env target | Consequence |
 |---|---|---|---|
-| SSM address | `aws_ssm_parameter.dev` | `aws_ssm_parameter.env` | address rewrite needed if moving state |
+| SSM address | `aws_ssm_parameter.dev` | `module.stack.aws_ssm_parameter.env` | address rewrite needed if moving state |
 | SSM `name` (ForceNew) | `/tf-env-isolation-poc/legacy/dev` | `/tf-env-isolation-poc/dev/deployed-by` | `state mv` alone → plan proposes **replace** |
 | Provider | aliased `aws.dev` | unaliased | alias is not in the stored address; rename is plain |
 
@@ -58,9 +58,9 @@ terraform -chdir=legacy state list
 
 | Legacy address | Target root | Method | Target address |
 |---|---|---|---|
-| `aws_ssm_parameter.dev` | `dev/` | **recreate** | `aws_ssm_parameter.env` |
-| `aws_ssm_parameter.uat` | `uat/` | **recreate** | `aws_ssm_parameter.env` |
-| `aws_ssm_parameter.prod` | `prod/` | **recreate** | `aws_ssm_parameter.env` |
+| `aws_ssm_parameter.dev` | `dev/` | **recreate** | `module.stack.aws_ssm_parameter.env` |
+| `aws_ssm_parameter.uat` | `uat/` | **recreate** | `module.stack.aws_ssm_parameter.env` |
+| `aws_ssm_parameter.prod` | `prod/` | **recreate** | `module.stack.aws_ssm_parameter.env` |
 
 **Pitfall:** an env root's `state list` is empty before its first apply; empty
 `state pull` from a target root is normal, not an error.
@@ -79,7 +79,7 @@ terraform -chdir=prod validate
 ```
 
 **Expected:** clean init against `env/<env>/terraform.tfstate`; each env
-`main.tf` already declares `aws_ssm_parameter.env` (and
+root calls `module.stack`, which declares `aws_ssm_parameter.env` (and
 `aws_cloudwatch_log_group.poc`).
 
 **Pitfall:** the moved/recreated resource must be manageable by the target
@@ -99,13 +99,13 @@ entirely, the right lead method for this PoC's SSM parameters.
 
 #### 1. Declare
 
-Already present in `dev/main.tf`:
+Already present via `module.stack` in `dev/main.tf` (`modules/poc/main.tf`):
 
 ```hcl
 resource "aws_ssm_parameter" "env" {
-  name  = "/tf-env-isolation-poc/dev/deployed-by"
+  name  = "/tf-env-isolation-poc/${var.environment}/deployed-by"
   type  = "String"
-  value = "terraform-dev"
+  value = "terraform-${var.environment}"
 }
 ```
 
@@ -136,7 +136,7 @@ terraform -chdir=dev apply
 ```
 
 **Expected:** new `/tf-env-isolation-poc/dev/deployed-by` exists; `dev/` state
-owns `aws_ssm_parameter.env`.
+owns `module.stack.aws_ssm_parameter.env`.
 
 #### 5. Release the legacy resource
 
@@ -211,7 +211,7 @@ terraform -chdir=dev    state pull > /tmp/dev.tfstate    # may be empty pre-firs
 
 # Move within local files (removes the address from the legacy copy, adds it to the dev copy)
 terraform state mv -state=/tmp/legacy.tfstate -state-out=/tmp/dev.tfstate \
-  aws_ssm_parameter.dev aws_ssm_parameter.env
+  aws_ssm_parameter.dev module.stack.aws_ssm_parameter.env
 
 # Push BOTH updated local states back to their backends
 terraform -chdir=dev    state push /tmp/dev.tfstate
@@ -227,7 +227,7 @@ address; removing the block resolves it. When done, the resource must exist in
 **exactly one state and one config**.
 
 **Address rewrites:** the stored address contains no provider alias →
-`aws_ssm_parameter.dev` → `aws_ssm_parameter.env` is a plain rename. Two ways:
+`aws_ssm_parameter.dev` → `module.stack.aws_ssm_parameter.env` is a plain rename. Two ways:
 
 | Mechanism | When | Cross-state? |
 |---|---|---|
@@ -281,7 +281,7 @@ decision rule; recreate (Step 3) is the exit.
 terraform -chdir=legacy state push "$HOME/legacy-tfstate-backup-<ts>.json"
 
 # If the new env resource must be released from the target state
-terraform -chdir=dev state rm aws_ssm_parameter.env
+terraform -chdir=dev state rm module.stack.aws_ssm_parameter.env
 ```
 
 **Expected:** legacy state back to pre-migration; AWS objects are untouched by

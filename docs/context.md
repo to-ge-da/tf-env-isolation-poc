@@ -25,7 +25,7 @@ A common fragile layout looks like this:
 - Multiple **aliased** AWS providers for different accounts (often the **same region**, different assume-role targets)
 - One `plan` / `apply` / `destroy` that can touch every account wired into those aliases
 
-That pattern is demonstrated in [`legacy/`](../legacy/). The per-env layout is [`dev/`](../dev/), [`uat/`](../uat/), and [`prod/`](../prod/): one directory and one state key per environment, with no cross-environment provider aliases in a single root.
+That pattern is demonstrated in [`legacy/`](../legacy/). The per-env layout is [`dev/`](../dev/), [`uat/`](../uat/), and [`prod/`](../prod/): one directory and one state key per environment, with no cross-environment provider aliases in a single root. Shared resource code lives in [`modules/poc/`](../modules/poc/); sharing the module does not share state.
 
 ## What provider aliases are for
 

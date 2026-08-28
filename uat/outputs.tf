@@ -1,11 +1,11 @@
 output "environment" {
-  value = "uat"
+  value = module.stack.environment
 }
 
 output "ssm_parameter_arn" {
-  value = aws_ssm_parameter.env.arn
+  value = module.stack.ssm_parameter_arn
 }
 
 output "log_group_arn" {
-  value = aws_cloudwatch_log_group.poc.arn
+  value = module.stack.log_group_arn
 }

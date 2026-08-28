@@ -5,9 +5,10 @@ variable "region" {
 }
 
 variable "deploy_role_arn" {
-  description = "IAM role ARN to assume in the prod account (placeholder; replace before real applies)."
+  description = "IAM role ARN to assume in the prod account. Null uses ambient credentials (local profile or CI OIDC)."
   type        = string
-  default     = "arn:aws:iam::333333333333:role/ProdTerraformDeployRole"
+  default     = null
+  nullable    = true
 }
 
 variable "tags" {

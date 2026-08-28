@@ -5,9 +5,10 @@ variable "region" {
 }
 
 variable "deploy_role_arn" {
-  description = "IAM role ARN to assume in the uat account (placeholder; replace before real applies)."
+  description = "IAM role ARN to assume in the uat account. Null uses ambient credentials (local profile or CI OIDC)."
   type        = string
-  default     = "arn:aws:iam::222222222222:role/UatTerraformDeployRole"
+  default     = null
+  nullable    = true
 }
 
 variable "tags" {
